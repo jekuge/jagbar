@@ -1,5 +1,6 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/extensions/shape.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,19 @@ float get_cpu_usage() {
     float total = user + nice + system + idle;
     fclose(fp);
     return (total - idle) / total * 100.0;
+}
+
+float get_mem_usage() {
+    FILE *fp = fopen("/proc/meminfo", "r");
+    if (!fp) return 0.0;
+    long mem_total, mem_free;
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        if (sscanf(line, "MemTotal: %ld kB", &mem_total)) continue;
+        if (sscanf(line, "MemFree: %ld kB", &mem_free)) break;
+    } 
+    fclose(fp);
+    return (float)(mem_total - mem_free) / mem_total * 100.0;
 }
 
 int main()
@@ -82,7 +96,8 @@ int main()
 
         // format status text
         float cpu = get_cpu_usage();
-        snprintf(status, sizeof(status), "Status: %s | CPU: %.1f%% | Mem: N/A", time_str, cpu);
+        float mem = get_mem_usage();
+        snprintf(status, sizeof(status), "Status: %s | CPU: %.1f%% | Mem: %.1f%%", time_str, cpu, mem);
 
         // draw text
         XClearWindow(dpy, win);
