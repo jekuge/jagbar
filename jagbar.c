@@ -29,13 +29,7 @@ typedef struct {
 
 //jagbar.conf
 int load_config(const char *filename, Config *cfg) {
-	FILE *fp = fopen(filename, "r");
-	if (!fp) {
-		perror("Cannot open config file");
-		return -1;
-	}
-
-	// config defaults
+    // config defaults
 	cfg->height = DEFAULT_HEIGHT;
 	cfg->width = 0;
 	cfg->x = 0;
@@ -46,6 +40,13 @@ int load_config(const char *filename, Config *cfg) {
 	cfg->corner_radius = 10;
     cfg->border = 0;
     cfg->text_offset = 10;
+
+
+	FILE *fp = fopen(filename, "r");
+	if (!fp) {
+		perror("Cannot open config file");
+		return -1;
+	}
 
 	// regex for key value pattern matching
 	regex_t regex; 
@@ -95,16 +96,18 @@ int load_config(const char *filename, Config *cfg) {
 	return 0;
 }			
 
-float get_battery(int *percent, char *status, size_t status_size) {
-    FILE *fp;
-    char path[] = "/sys/class/power_supply";
-   // battery capactiy
-    fp = fopen(strcat(strcpy(status, path), "capacity", "r"));
-    if (!fp) { 
-        *percent = -1;
-        strcpy(status, "N/A");
-        return -1;
-    }
+//float get_battery_info(int *percent, char *status, size_t status_size) {
+//    FILE *fp;
+//    char path[] = "/sys/class/power_supply";
+//   // battery capactiy
+//    fp = fopen(strcat(strcpy(status, path), "capacity", "r"));
+//    if (!fp) { 
+//        *percent = -1;
+//        strcpy(status, "N/A");
+//        return -1;
+//    }
+//    // batter state
+//    fp = 
 
 
 float get_cpu_usage() {
@@ -133,14 +136,16 @@ float get_mem_usage() {
     return (float)(mem_total - mem_free) / mem_total * 100.0;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    const char *conf_file = (argc > 1) ? argv[1] : "";
 	Config cfg;
-	load_config("jagbar.conf", &cfg);
+	load_config(conf_file, &cfg);
 	Display *dpy;
 	Window win;
 	XEvent ev;
 	GC gc; // graphics context for colors
 	int screen;
+
 
 	// open connection to X server
 	printf("starting jagbar\n");
