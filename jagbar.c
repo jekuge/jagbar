@@ -96,18 +96,30 @@ int load_config(const char *filename, Config *cfg) {
 	return 0;
 }			
 
-//float get_battery_info(int *percent, char *status, size_t status_size) {
-//    FILE *fp;
-//    char path[] = "/sys/class/power_supply";
-//   // battery capactiy
-//    fp = fopen(strcat(strcpy(status, path), "capacity", "r"));
-//    if (!fp) { 
-//        *percent = -1;
-//        strcpy(status, "N/A");
-//        return -1;
-//    }
-//    // batter state
-//    fp = 
+float get_battery_info(int *percent, char *status, size_t status_size) {
+    FILE *fp;
+    char path[] = "/sys/class/power_supply/BAT0/";
+   // battery capactiy
+    fp = fopen(strcat(strcpy(status, path), "capacity"), "r");
+    if (!fp) { 
+        *percent = -1;
+        strcpy(status, "N/A");
+        return -1;
+    }
+    fscanf(fp, "%d", percent);
+    fclose(fp);
+    // battery state
+    fp = fopen(strcat(strcpy(status, path), "status"), "r");
+    if (!fp) {
+        strcpy(status, "N/A");
+        return -1;
+    }
+    fgets(status, status_size, fp);
+    status[strcspn(status, "\n")] = 0;
+    fclose(fp);
+
+    return 0;
+}
 
 
 float get_cpu_usage() {
@@ -192,17 +204,23 @@ int main(int argc, char *argv[]) {
     int y_pos = (cfg.height + font_info->ascent - font_info->descent) / 2;
     int bar_width = (cfg.width == 0) ? screen_width : cfg.width;
 	// main loop
-	char status[256];
+	char status[256], bat_status[32];
+    int bat_percent;
 	while (1) {
     	// get current time
     	time_t now = time(NULL);
     	char *time_str = ctime(&now);
     	time_str[strlen(time_str) - 1] = '\0';
-    
+
+        // get battery info
+        get_battery_info(&bat_percent, bat_status, sizeof(&bat_status));
     	// format status text
     	float cpu = get_cpu_usage();
     	float mem = get_mem_usage();
-    	snprintf(status, sizeof(status), "Status: %s | CPU: %.1f%% | Mem: %.1f%%", time_str, cpu, mem);
+
+
+    	snprintf(status, sizeof(status), "%s | %s Bat: %d%% | CPU: %.1f%% | Mem: %.1f%%", 
+            time_str, bat_status, bat_percent, cpu, mem);
         
         int total_width = XTextWidth(font_info, status, strlen(status));
         int x_pos = bar_width - total_width - cfg.text_offset;
