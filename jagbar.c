@@ -23,9 +23,11 @@ typedef struct {
     unsigned long bgcolor;
     unsigned long fgcolor;
     int corner_radius;
+    int border;
+    int text_offset;
 } Config;
 
-// jagbar.conf
+//jagbar.conf
 int load_config(const char *filename, Config *cfg) {
 	FILE *fp = fopen(filename, "r");
 	if (!fp) {
@@ -39,9 +41,11 @@ int load_config(const char *filename, Config *cfg) {
 	cfg->x = 0;
 	cfg->y = 0;
 	cfg->refresh = DEFAULT_REFRESH;
-	cfg->bgcolor = 0xFFFFFF;
+	cfg->bgcolor = 0xffffff;
 	cfg->fgcolor = 0x000000;
 	cfg->corner_radius = 10;
+    cfg->border = 0;
+    cfg->text_offset = 10;
 
 	// regex for key value pattern matching
 	regex_t regex; 
@@ -75,11 +79,11 @@ int load_config(const char *filename, Config *cfg) {
 			else if (strcmp(key, "width") == 0) cfg->width = atoi(value);
 			else if (strcmp(key, "x") == 0) cfg->x = atoi(value);
 			else if (strcmp(key, "y") == 0) cfg->y = atoi(value);
+            else if (strcmp(key, "border") == 0) cfg->border = atoi(value);
 			else if (strcmp(key, "refresh") == 0) cfg->y = atoi(value);
 			else if (strcmp(key, "bgcolor") == 0) cfg->bgcolor = strtoul(value, NULL, 16);
 			else if (strcmp(key, "fgcolor") == 0) cfg->fgcolor = strtoul(value, NULL, 16);
-			else if (strcmp(key, "corner_radius") == 0) cfg->fgcolor = atoi(value);
-			else if (strcmp(key, "text_offset") == 0) cfg->fgcolor = atoi(value);	
+			else if (strcmp(key, "text_offset") == 0) cfg->text_offset = atoi(value);	
 			else fprintf(stderr, "Unknown key '%s' at line %d of jagbar.conf\n", key, line_num);
 		} else if (line[0] && line[0] != '#') {
 			fprintf(stderr, "Malformed line %d: %s in jagbar.conf\n", line_num, line);
@@ -90,6 +94,18 @@ int load_config(const char *filename, Config *cfg) {
 	fclose(fp);
 	return 0;
 }			
+
+float get_battery(int *percent, char *status, size_t status_size) {
+    FILE *fp;
+    char path[] = "/sys/class/power_supply";
+   // battery capactiy
+    fp = fopen(strcat(strcpy(status, path), "capacity", "r"));
+    if (!fp) { 
+        *percent = -1;
+        strcpy(status, "N/A");
+        return -1;
+    }
+
 
 float get_cpu_usage() {
     FILE *fp = fopen("/proc/stat", "r");
@@ -129,10 +145,9 @@ int main() {
 	// open connection to X server
 	printf("starting jagbar\n");
 	dpy = XOpenDisplay(NULL);
-	if (!dpy)
-	{
-	fprintf(stderr, "Cannot open display\n");
-	exit(1);
+	if (!dpy) {
+        fprintf(stderr, "Cannot open display\n");
+        exit(1);
 	}
 
 	screen = DefaultScreen(dpy);
@@ -140,7 +155,7 @@ int main() {
 
 	// create window for status bar
 	win = XCreateSimpleWindow(dpy, RootWindow(dpy, screen),
-	0, 0, screen_width, BAR_HEIGHT, 1, BlackPixel(dpy, screen), WhitePixel(dpy, screen));
+        cfg.x, cfg.y, screen_width, cfg.height, cfg.border, cfg.fgcolor, cfg.bgcolor);
 	
 	// set window type to _NET_WM_WINDOW_TYPE_DOCK
 	Atom wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
@@ -151,38 +166,55 @@ int main() {
 	Atom wm_state = XInternAtom(dpy, "_NTE_WM_STATE", False);
 	Atom state_above = XInternAtom(dpy, "_NEt_WM_STATE_ABOVE", False);
 	XChangeProperty(dpy, win, wm_state, XA_ATOM, 32, PropModeReplace,
-	(unsigned char *)&state_above, //
-	1);
+        (unsigned char *)&state_above, //
+        1);
 
 	// 
 
+    gc = XCreateGC(dpy, win, 0, NULL);
+    XSetForeground(dpy, gc, cfg.fgcolor);
+
 	XSelectInput(dpy, win, ExposureMask | KeyPressMask);
 	XMapWindow(dpy, win);
+
+    XFontStruct *font_info = XQueryFont(dpy, XGContextFromGC(gc));
+    if (!font_info) {
+        fprintf(stderr, "Failed to get font info, using default positioning\n");
+        font_info = XLoadQueryFont(dpy, "fixed");
+    }
+
+    int font_height = font_info->ascent + font_info->descent;
+    int y_pos = (cfg.height + font_info->ascent - font_info->descent) / 2;
+    int bar_width = (cfg.width == 0) ? screen_width : cfg.width;
 	// main loop
 	char status[256];
 	while (1) {
-	// get current time
-	time_t now = time(NULL);
-	char *time_str = ctime(&now);
-	time_str[strlen(time_str) - 1] = '\0';
-
-	// format status text
-	float cpu = get_cpu_usage();
-	float mem = get_mem_usage();
-	snprintf(status, sizeof(status), "Status: %s | CPU: %.1f%% | Mem: %.1f%%", time_str, cpu, mem);
-
-	// draw text
-	XClearWindow(dpy, win);
-	XDrawString(dpy, win, DefaultGC(dpy, screen), 10, 15, status, strlen(status));
-
-	// flush changes to X server
-	XFlush(dpy);
-
-	// sleep until next update
-	sleep(REFRESH_INTERVAL);
+    	// get current time
+    	time_t now = time(NULL);
+    	char *time_str = ctime(&now);
+    	time_str[strlen(time_str) - 1] = '\0';
+    
+    	// format status text
+    	float cpu = get_cpu_usage();
+    	float mem = get_mem_usage();
+    	snprintf(status, sizeof(status), "Status: %s | CPU: %.1f%% | Mem: %.1f%%", time_str, cpu, mem);
+        
+        int total_width = XTextWidth(font_info, status, strlen(status));
+        int x_pos = bar_width - total_width - cfg.text_offset;
+    
+    	// draw text
+    	XClearWindow(dpy, win);
+    	XDrawString(dpy, win, gc, x_pos, y_pos, status, strlen(status));
+    
+    	// flush changes to X server
+    	XFlush(dpy);
+    
+    	// sleep until next update
+    	sleep(REFRESH_INTERVAL);
 	}
 
 	// clean up
+    XFreeGC(dpy, gc);
 	XCloseDisplay(dpy);
 	return 0;
 }
