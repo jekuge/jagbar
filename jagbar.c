@@ -7,12 +7,16 @@
 #include <unistd.h>
 #include <time.h>
 #include <regex.h>
+#include <i3/ipc.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #define BAR_HEIGHT 20
 #define REFRESH_INTERVAL 1
 #define DEFAULT_REFRESH 1
 #define DEFAULT_HEIGHT 20
 #define MAX_LINE 256
+#define I3_IPC_MAGIC_STRING "i3-ipc"
 
 typedef struct {
     int height;
@@ -27,9 +31,51 @@ typedef struct {
     int text_offset;
 } Config;
 
+
+int get_workspaces() {
+    char path[108];
+    FILE *fp = popen("i3 --get-socketpath", "r");
+    if (!fp) {
+        printf("Error retrieving i3 ipc socket path");
+        return -1;
+    }
+    fgets(path, sizeof(path), fp);
+
+    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        printf("IPC socket failed to initiate");
+        return -1;
+    }
+
+    size_t path_len = strlen(path);
+    if (path_len > 0 && path[path_len - 1] == '\n') {
+        path[path_len - 1] = '\0';
+    }
+    
+    const char* str = "i3-ipcGET_WORKSPACES";
+    size_t str_len = strlen(str);
+    size_t bit_len = str_len * 8;
+    unsigned char* binary = (unsigned char*)malloc(bit_len);
+    
+    for (size_t i = 0; i < str_len; i++) {
+        for (int j = 7; j >= 0; j--) {
+            binary[i * 8 + (7 - j)] = (str[i] >> j) & 1;
+        }
+    }
+
+    struct sockaddr_un addr;
+    addr.sun_family = AF_LOCAL;
+    strncpy((char *)&addr.sun_path, (char *)path, strlen(path));
+
+    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        printf("Failed to bind i3 ipc socket\n");
+    }
+}
+
 //jagbar.conf
 int load_config(const char *filename, Config *cfg) {
-    // config defaults
+    // config defaults            printf("%d", binary[i * 8 + (7 - j)]);
+
 	cfg->height = DEFAULT_HEIGHT;
 	cfg->width = 0;
 	cfg->x = 0;
@@ -149,6 +195,7 @@ float get_mem_usage() {
 }
 
 int main(int argc, char *argv[]) {
+    get_workspaces();
     const char *conf_file = (argc > 1) ? argv[1] : "";
 	Config cfg;
 	load_config(conf_file, &cfg);
