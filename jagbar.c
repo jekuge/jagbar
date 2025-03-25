@@ -5,11 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <time.h>
 #include <regex.h>
 #include <i3/ipc.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #define BAR_HEIGHT 20
 #define REFRESH_INTERVAL 1
@@ -32,65 +36,93 @@ typedef struct {
 } Config;
 
 
-int get_workspaces() {
-    char path[108];
-    FILE *fp = popen("i3 --get-socketpath", "r");
-    if (!fp) {
-        printf("Error retrieving i3 ipc socket path");
-        return -1;
-    }
-    fgets(path, sizeof(path), fp);
-
-    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        printf("IPC socket failed to initiate");
-        return -1;
-    }
-
-    size_t path_len = strlen(path);
-    if (path_len > 0 && path[path_len - 1] == '\n') {
-        path[path_len - 1] = '\0';
-    }
-    
-    char str[] = "i3-ipc 14 GET_WORKSPACES";
-    //char type[] = "GET_WORKSPACES";
-    //int size_type = strlen(type);
-    //char size[4];
-    //memcpy(size, &size_type, sizeof(int));
-    //char* message = malloc(sizeof(*message) * (strlen(str) + (sizeof(size) / sizeof(size)[0]) + strlen(type)));
-    //strncat(message, str, strlen(str));
-    //printf("%s\n", message);
-    //strncat(message, size, strlen(size));
-    //printf("%s\n", message);
-    //size_t str_len = strlen(str);
-    //size_t bit_len = str_len * 8;
-    //unsigned char* binary = (unsigned char*)malloc(bit_len);
-    //
-    //for (size_t i = 0; i < str_len; i++) {
-    //    for (int j = 7; j >= 0; j--) {
-    //        binary[i * 8 + (7 - j)] = (str[i] >> j) & 1;
-    //    }
-    //}
-
-    struct sockaddr_un addr;
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, strlen(path));
-
-    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        printf("Failed to bind i3 ipc socket\n");
-    }
-
-    int req = write(sockfd, str, strlen(str));
-    printf("Req %d\n", req);
-
-    if (req < 0) {
-        printf("Failed pic send");
-    }
-    char *buffer[1024];
-    int data = read(sockfd, buffer, 1024 - 1);
-    printf("data: %d\n", data);
-
-}
+//int get_workspaces() {
+//    char path[108];
+//    FILE *fp = popen("i3 --get-socketpath", "r");
+//    if (!fp) {
+//        printf("Error retrieving i3 ipc socket path");
+//        return -1;
+//    }
+//    fgets(path, sizeof(path), fp);
+//    pclose(fp);
+//
+//    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+//    if (sockfd < 0) {
+//        printf("IPC socket failed to initiate");
+//        return -1;
+//    }
+//
+//    size_t path_len = strlen(path);
+//    if (path_len > 0 && path[path_len - 1] == '\n') {
+//        path[path_len - 1] = '\0';
+//    }
+//
+//    struct sockaddr_un addr;
+//    addr.sun_family = AF_UNIX;
+//    strncpy(addr.sun_path, path, strlen(path));
+//    addr.sun_path[path_len] = '\0';
+//
+//
+//
+//    const char* magic = "i3-ipc";
+//    uint32_t type = 0;
+//    char* command = "nop"; // no payload for workspaces per i3 docs
+//    uint32_t len = strlen(command);
+//    char msg[14 + len];
+//    memcpy(msg, magic, 6);
+//    *(uint32_t *)(msg + 6) = htonl(len);
+//    *(uint32_t *) (msg + 10) = htonl(type);
+//    memcpy(msg + 14, command, len);
+//
+////    fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL, 0) | O_NONBLOCK);
+//
+//    printf("msg :");
+//    for (size_t i = 0; i < 14 + len; i++) {
+//        printf("%02x ", (unsigned char)msg[i]);
+//    }
+//    printf("\n");
+//
+//    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+//        printf("Failed to bind i3 ipc socket\n");
+//        close(sockfd);
+//        return -1;
+//    }
+//
+//    ssize_t req = write(sockfd, msg, 14 + len);
+//    printf("Req %d\n", req);
+//
+//    struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };  // 2-second timeout
+//    fd_set readfds;
+//    FD_ZERO(&readfds);
+//    FD_SET(sockfd, &readfds);
+//    int ready = select(sockfd + 1, &readfds, NULL, NULL, &tv);
+//    if (ready < 0) {
+//        perror("select failed");
+//        close(sockfd);
+//        return -1;
+//    }
+//    if (ready == 0) {
+//        printf("No response after 2 seconds\n");
+//    } else {
+//        char buffer[1024];
+//        ssize_t res = read(sockfd, buffer, sizeof(buffer));
+//        if (res < 0) {
+//            perror("Failed to read response");
+//        } else if (res == 0) {
+//            printf("i3 closed socket\n");
+//        } else {
+//            printf("Response (%zd bytes): ", res);
+//            for (size_t i = 0; i < res; i++) {
+//                printf("%02x ", (unsigned char)buffer[i]);
+//            }
+//            printf("\nResponse text: %.*s\n", (int)res, buffer);
+//        }
+//    }
+//
+//    close(sockfd);
+//    return 0;
+//
+//}
 
 //jagbar.conf
 int load_config(const char *filename, Config *cfg) {
@@ -215,7 +247,7 @@ float get_mem_usage() {
 }
 
 int main(int argc, char *argv[]) {
-    get_workspaces();
+    //get_workspaces();
     const char *conf_file = (argc > 1) ? argv[1] : "";
 	Config cfg;
 	load_config(conf_file, &cfg);
