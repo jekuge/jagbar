@@ -52,24 +52,41 @@ int get_workspaces() {
         path[path_len - 1] = '\0';
     }
     
-    const char* str = "i3-ipcGET_WORKSPACES";
-    size_t str_len = strlen(str);
-    size_t bit_len = str_len * 8;
-    unsigned char* binary = (unsigned char*)malloc(bit_len);
-    
-    for (size_t i = 0; i < str_len; i++) {
-        for (int j = 7; j >= 0; j--) {
-            binary[i * 8 + (7 - j)] = (str[i] >> j) & 1;
-        }
-    }
+    char str[] = "i3-ipc";
+    char type[] = "GET_WORKSPACES";
+    int size_type = strlen(type);
+    char size[4];
+    memcpy(size, &size_type, sizeof(int));
+    char* message = malloc(sizeof(*message) * (strlen(str) + (sizeof(size) / sizeof(size)[0]) + strlen(type)));
+    strncat(message, str, strlen(str));
+    printf("%s\n", message);
+    strncat(message, size, strlen(size));
+    printf("%s\n", message);
+    //size_t str_len = strlen(str);
+    //size_t bit_len = str_len * 8;
+    //unsigned char* binary = (unsigned char*)malloc(bit_len);
+    //
+    //for (size_t i = 0; i < str_len; i++) {
+    //    for (int j = 7; j >= 0; j--) {
+    //        binary[i * 8 + (7 - j)] = (str[i] >> j) & 1;
+    //    }
+    //}
 
     struct sockaddr_un addr;
-    addr.sun_family = AF_LOCAL;
-    strncpy((char *)&addr.sun_path, (char *)path, strlen(path));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, strlen(path));
 
-    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         printf("Failed to bind i3 ipc socket\n");
     }
+
+    //if(send(sockfd, binary, strlen(binary), 0) < 0) {
+    //    printf("Failed pic send");
+    //}
+    char *buffer[1024];
+    int data = read(sockfd, buffer, 1024 - 1);
+    printf("data: %s\n", buffer);
+
 }
 
 //jagbar.conf
